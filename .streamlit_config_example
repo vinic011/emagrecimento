@@ -1,0 +1,4 @@
+# Crie .streamlit/secrets.toml com scripts/configure.py para configurar a senha.
+# APP_PASSWORD é obrigatória (16 a 256 caracteres).
+# OPENAI_API_KEY é opcional, necessária apenas para áudio e estimativas por IA.
+# Nunca envie secrets.toml ao repositório nem compartilhe as credenciais.

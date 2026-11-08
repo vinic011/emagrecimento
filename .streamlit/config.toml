@@ -1,0 +1,13 @@
+[server]
+headless = true
+maxUploadSize = 24
+enableCORS = true
+enableXsrfProtection = true
+enableStaticServing = false
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = false
+toolbarMode = "minimal"

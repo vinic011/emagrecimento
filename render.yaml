@@ -1,0 +1,22 @@
+# Paid web service + persistent disk. Review pricing before creating it.
+services:
+  - type: web
+    name: meu-plano-pessoal
+    runtime: python
+    plan: starter
+    numInstances: 1
+    buildCommand: pip install -r requirements.lock
+    startCommand: streamlit run app.py --server.address=0.0.0.0 --server.port=$PORT
+    healthCheckPath: /_stcore/health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: APP_DB_PATH
+        value: /var/data/emagrecimento.db
+      - key: APP_PASSWORD
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+    disk:
+      name: diario-persistente
+      mountPath: /var/data
+      sizeGB: 1
