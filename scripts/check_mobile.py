@@ -24,7 +24,7 @@ def server():
             probe.bind(('127.0.0.1', 0))
             port = probe.getsockname()[1]
         password = secrets.token_urlsafe(24)
-        env = {**os.environ, 'APP_PASSWORD': password, 'OPENAI_API_KEY': '',
+        env = {**os.environ, 'APP_PASSWORD': password, 'OPENAI_API_KEY': '', 'DATABASE_URL': '',
                'APP_DB_PATH': str(Path(temporary) / 'diary.db')}
         with open(Path(temporary) / 'server.log', 'w') as log:
             process = subprocess.Popen([sys.executable, '-m', 'streamlit', 'run', 'app.py',

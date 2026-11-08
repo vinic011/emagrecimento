@@ -1,6 +1,8 @@
 from contextlib import closing
 from datetime import date
 import sqlite3
+import psycopg
+from storage import read_frame, StorageConfigurationError
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -32,13 +34,23 @@ st.html("""
 </style>
 """)
 
-def main():
+def main(require_remote=False):
  require_login()
- with closing(connect()) as c:
+ try:render_diary(require_remote)
+ except StorageConfigurationError as error:
+  st.error(str(error));st.stop()
+ except (psycopg.Error, sqlite3.Error):
+  st.error('Não foi possível acessar o banco de dados. Confira a conexão e a configuração do banco; tente novamente antes de continuar. Nenhum banco local alternativo foi usado.')
+  st.stop()
+
+
+def render_diary(require_remote=False):
+ with closing(connect(require_remote=require_remote)) as c:
   st.title('🚴 Meu Plano de Emagrecimento')
   st.caption('60 dias • 3 refeições por dia • checklist com data • áudio e estimativas com API da OpenAI')
   with st.sidebar:
    st.header('⚙️ Configurações')
+   st.caption('Dados persistentes no PostgreSQL.' if getattr(c,'remote',False) else 'Dados neste computador ou volume local.')
    start=st.date_input('Início do plano',date.fromisoformat(get_setting(c,'start',today().isoformat())))
    target=st.number_input('Meta diária (kcal)',min_value=1200,max_value=4000,value=int(get_setting(c,'target','1700')),step=50)
    st.write('Peso inicial: **98 kg** · Altura: **1,70 m** · Idade: **24 anos**')
@@ -51,7 +63,7 @@ def main():
   idx=(day-start).days+1
   st.caption(f'Dia {idx} do plano' if 1<=idx<=60 else 'Fora da janela de 60 dias (registros continuam disponíveis)')
   daystr=day.isoformat()
-  meals_df=pd.read_sql_query('SELECT * FROM meals WHERE day=?',c,params=(daystr,))
+  meals_df=read_frame('SELECT * FROM meals WHERE day=?',c,params=(daystr,))
   consumed=float(meals_df.kcal.sum()) if not meals_df.empty else 0
   with st.container(key='daily_summary'):
    col1,col2,col3=st.columns(3)
@@ -190,7 +202,7 @@ def main():
     minutes=st.number_input('Minutos de bicicleta',0,300,int(existing[3]),5,key=f'minutes_{daystr}')
     notes=st.text_area('Observações (fome, disposição, dificuldades)',value=existing[4] or '',key=f'notes_{daystr}',max_chars=2000)
     if st.form_submit_button('Salvar checklist',type='primary'):
-     c.execute('INSERT OR REPLACE INTO habits (day,water,sleep,bike,bike_minutes,notes,fiber) VALUES (?,?,?,?,?,?,?)',(daystr,int(water),int(sleep),int(bike),int(minutes),notes,int(fiber)));c.commit();st.success('Checklist salvo!')
+     c.execute('INSERT INTO habits (day,water,sleep,bike,bike_minutes,notes,fiber) VALUES (?,?,?,?,?,?,?) ON CONFLICT(day) DO UPDATE SET water=excluded.water,sleep=excluded.sleep,bike=excluded.bike,bike_minutes=excluded.bike_minutes,notes=excluded.notes,fiber=excluded.fiber',(daystr,int(water),int(sleep),int(bike),int(minutes),notes,int(fiber)));c.commit();st.success('Checklist salvo!')
    st.caption('Suplemento de fibra: use apenas conforme orientação do rótulo ou profissional, com água suficiente. Separe de medicamentos quando indicado. Não substitui uma alimentação variada.')
    st.caption('Objetivo: bicicleta 60 min em 5 dias da semana. Descanso também faz parte do plano.')
    st.write('**Refeições registradas:** '+', '.join(f'{m}: {"✓" if not meals_df.empty and m in meals_df.meal.values else "○"}' for m in MEALS))
@@ -203,36 +215,37 @@ def main():
     hip=st.number_input('Quadril (cm)',key=f'hip_{daystr}',min_value=40.,max_value=200.,value=float(measure[2]) if measure and measure[2] else 105.,step=.5)
     note=st.text_input('Observação semanal',value=measure[3] if measure else '',key=f'measure_note_{daystr}',max_chars=2000)
     if st.form_submit_button('Salvar medidas'):
-     c.execute('INSERT OR REPLACE INTO measures VALUES (?,?,?,?,?)',(daystr,weight,waist,hip,note));c.commit();st.success('Medidas salvas!')
+     c.execute('INSERT INTO measures(day,weight,waist,hip,notes) VALUES (?,?,?,?,?) ON CONFLICT(day) DO UPDATE SET weight=excluded.weight,waist=excluded.waist,hip=excluded.hip,notes=excluded.notes',(daystr,weight,waist,hip,note));c.commit();st.success('Medidas salvas!')
    st.success('**PESAGEM OFICIAL: TODO SÁBADO DE MANHÃ.** Ao acordar, após ir ao banheiro e antes de comer ou beber. Use a mesma balança e registre peso, cintura e quadril.')
    st.info('**Como se pesar com maior precisão:** pela manhã, após ir ao banheiro, antes do café da manhã e de beber água. Use sempre a mesma balança, no piso firme, sem sapatos e com roupas semelhantes. Não é necessário jejum prolongado. Registre oficialmente todo sábado de manhã; se preferir pesagens diárias, acompanhe a média de 7 dias.')
    st.caption('Meça a cintura sem apertar a fita, após soltar o ar normalmente. Os valores iniciais dos campos são exemplos: substitua pelas medidas reais.')
-   measures=pd.read_sql_query('SELECT * FROM measures ORDER BY day',c)
+   measures=read_frame('SELECT * FROM measures ORDER BY day',c)
    if not measures.empty:
     st.plotly_chart(px.line(measures,x='day',y='weight',markers=True,title='Evolução do peso (kg)'),width='stretch')
     st.plotly_chart(px.line(measures,x='day',y='waist',markers=True,title='Evolução da cintura (cm)'),width='stretch')
   with t4:
-   history=pd.read_sql_query('SELECT day,meal,SUM(kcal) AS kcal FROM meals GROUP BY day,meal ORDER BY day',c)
+   history=read_frame('SELECT day,meal,SUM(kcal) AS kcal FROM meals GROUP BY day,meal ORDER BY day',c)
    if not history.empty:
     daily=history.groupby('day',as_index=False).kcal.sum()
     st.plotly_chart(px.bar(daily,x='day',y='kcal',title='Calorias por dia'),width='stretch')
     st.dataframe(history,width='stretch',hide_index=True)
-    st.download_button('⬇️ Exportar refeições CSV',export_csv(pd.read_sql_query('SELECT * FROM meals ORDER BY day',c)),'refeicoes.csv','text/csv')
-   habits=pd.read_sql_query('SELECT * FROM habits ORDER BY day',c)
+    st.download_button('⬇️ Exportar refeições CSV',export_csv(read_frame('SELECT * FROM meals ORDER BY day',c)),'refeicoes.csv','text/csv')
+   habits=read_frame('SELECT * FROM habits ORDER BY day',c)
    st.download_button('⬇️ Exportar checklist CSV',export_csv(habits),'checklist.csv','text/csv')
-   measures=pd.read_sql_query('SELECT * FROM measures ORDER BY day',c)
+   measures=read_frame('SELECT * FROM measures ORDER BY day',c)
    st.download_button('⬇️ Exportar medidas CSV',export_csv(measures),'medidas.csv','text/csv')
    st.divider()
    st.subheader('📄 Gerar PDF para imprimir ou guardar')
    st.caption('Inclui instruções de pesagem, checklist de 60 dias, medidas semanais e refeições já registradas.')
-   pdf_bytes=make_pdf(start,target,pd.read_sql_query('SELECT * FROM meals',c),habits,measures)
+   pdf_bytes=make_pdf(start,target,read_frame('SELECT * FROM meals',c),habits,measures)
    st.download_button('📄 Baixar meu PDF atualizado',pdf_bytes,'meu_plano_60_dias.pdf','application/pdf',type='primary')
-   st.download_button('💾 Baixar backup completo',backup_bytes(c),f'meu_plano_backup_{today().isoformat()}.db','application/octet-stream')
+   backup_payload=backup_bytes(c)
+   st.download_button('💾 Baixar backup completo',backup_payload,f'meu_plano_backup_{today().isoformat()}.db','application/octet-stream')
    st.caption('Guarde uma cópia do backup fora do app. Ele contém todo o diário e as configurações, inclusive registros fora dos 60 dias.')
-  try:daily_backup(c)
-  except (OSError, sqlite3.Error):
+  try:daily_backup(c,payload=backup_payload)
+  except (OSError, sqlite3.Error, psycopg.Error):
    st.warning('Não foi possível atualizar o backup automático. Baixe o backup completo e confira o espaço de armazenamento.')
 
 
 if __name__ == "__main__":
- main()
+ main(require_remote=globals().get('REQUIRE_REMOTE_DB',False))

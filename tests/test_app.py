@@ -16,6 +16,7 @@ def button(at, label):
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
+    monkeypatch.setenv('DATABASE_URL', '')
     monkeypatch.setenv('APP_DB_PATH', str(tmp_path / 'diary.db'))
     monkeypatch.setenv('APP_PASSWORD', PASSWORD)
     monkeypatch.setenv('OPENAI_API_KEY', '')
@@ -164,3 +165,27 @@ def test_food_fields_preserve_edits_when_adding_and_removing(app):
     button(app, '💾 Salvar no diário').click().run()
     assert not app.exception
     assert app.metric[1].value == '273 kcal'
+
+
+def test_cloud_requires_remote_database_and_never_falls_back(app, monkeypatch, tmp_path):
+    path = tmp_path / 'cloud-must-not-exist.db'
+    monkeypatch.setenv('APP_DB_PATH', str(path))
+    cloud = AppTest.from_file(str(ROOT / 'streamlit_app.py'), default_timeout=30).run()
+    cloud.text_input[0].set_value(PASSWORD)
+    button(cloud, 'Entrar').click().run()
+    assert not cloud.exception and not cloud.tabs
+    assert 'DATABASE_URL' in cloud.error[0].value
+    assert not path.exists()
+
+
+def test_unreachable_postgres_is_safe_and_never_falls_back(app, monkeypatch, tmp_path):
+    path = tmp_path / 'fallback-must-not-exist.db'
+    monkeypatch.setenv('APP_DB_PATH', str(path))
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://user:secret-must-not-leak@127.0.0.1:1/db')
+    cloud = AppTest.from_file(str(ROOT / 'streamlit_app.py'), default_timeout=30).run()
+    cloud.text_input[0].set_value(PASSWORD)
+    button(cloud, 'Entrar').click().run()
+    assert not cloud.exception and not cloud.tabs
+    assert 'banco de dados' in cloud.error[0].value
+    assert 'secret-must-not-leak' not in str(cloud)
+    assert not path.exists()

@@ -45,3 +45,5 @@ urllib3==2.8.0
 uvicorn==0.54.0
 websockets==17.4
 watchdog==7.1.0; sys_platform == "linux"
+psycopg==3.3.8
+psycopg-binary==3.3.8

@@ -1,5 +1,2 @@
-streamlit==1.67.0
-pandas==3.1.1
-plotly==7.1.0
-openai==3.46.0
-reportlab==5.1.0
+# Shared, tested versions for Community Cloud, local use and Docker.
+-r requirements.lock

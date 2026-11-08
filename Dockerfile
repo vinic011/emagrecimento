@@ -6,7 +6,7 @@ COPY requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock \
     && useradd --create-home --uid 10001 app \
     && mkdir /data && chown app:app /data
-COPY --chown=app:app app.py core.py auth.py ./
+COPY --chown=app:app app.py core.py auth.py storage.py ./
 COPY --chown=app:app .streamlit/config.toml .streamlit/config.toml
 USER app
 EXPOSE 8501

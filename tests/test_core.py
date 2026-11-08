@@ -12,6 +12,7 @@ import core
 
 @pytest.fixture
 def database(tmp_path, monkeypatch):
+    monkeypatch.setenv('DATABASE_URL', '')
     monkeypatch.setenv('APP_DB_PATH', str(tmp_path / 'nested' / 'diary.db'))
     with closing(core.connect()) as connection:
         yield connection
@@ -71,6 +72,7 @@ def test_daily_backup_and_restore(database, tmp_path):
 
 def test_old_database_migration(tmp_path, monkeypatch):
     path = tmp_path / 'old.db'
+    monkeypatch.setenv('DATABASE_URL', '')
     monkeypatch.setenv('APP_DB_PATH', str(path))
     with closing(sqlite3.connect(path)) as old:
         old.execute('CREATE TABLE habits (day TEXT PRIMARY KEY, water INTEGER, sleep INTEGER, bike INTEGER, bike_minutes INTEGER, notes TEXT)')

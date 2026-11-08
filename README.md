@@ -17,17 +17,56 @@ Abra `http://localhost:8501`. O configurador pede uma senha de 16 a 256 caracter
 
 O banco local existente é preservado. A primeira abertura autenticada fixa a data inicial; você pode alterá-la e clicar em **Salvar configurações**. Datas seguem `America/Recife`.
 
-## Publicação com dados persistentes
+## Publicar no Streamlit Community Cloud com Neon
 
-O arquivo `render.yaml` prepara um serviço Python de uma instância, com disco de 1 GB em `/var/data` e banco em `/var/data/emagrecimento.db`. O Render exige serviço pago para disco persistente; confira o valor no painel antes de criar. Não use hospedagem com disco temporário para seu diário. Referências: [discos persistentes](https://render.com/docs/disks) e [Blueprint](https://render.com/docs/blueprint-spec).
+**Use `streamlit_app.py` como arquivo principal da publicação.** Esse arquivo exige PostgreSQL externo; se `DATABASE_URL` estiver ausente ou o banco estiver inacessível, o app bloqueia o diário e não muda para SQLite. O Neon armazena refeições, checklist, medidas, configurações e snapshots diários fora da máquina do Streamlit. Reiniciar, hibernar ou reconstruir o app não apaga esse banco externo. Não exclua o projeto/banco no Neon durante o acompanhamento.
 
-1. Coloque o código em um repositório privado no GitHub. Não envie `.env`, `.streamlit/secrets.toml`, arquivos `.db`, backups ou a pasta `.venv`.
-2. Conecte esse repositório ao Render e crie um **Blueprint** usando `render.yaml`.
-3. Defina `APP_PASSWORD` com uma senha forte de 16 a 256 caracteres no painel. `OPENAI_API_KEY` é opcional: pode ficar vazia para usar o registro manual.
-4. Confirme o serviço e disco pagos. Espere a implantação terminar e abra a URL HTTPS fornecida pelo Render.
-5. Faça login, registre um item de teste, reinicie o serviço e confira se o registro permanece. Depois exclua o item de teste. Verifique também o microfone no celular e baixe um backup.
+### 1. Criar o banco no Neon
 
-As credenciais de hospedagem e o endereço público não fazem parte deste projeto. O arquivo de publicação preparado não significa que o app já esteja no ar. Use HTTPS para o microfone funcionar fora do computador local. Mantenha apenas uma instância, pois este app usa SQLite em disco local.
+1. Crie sua conta no [Neon](https://console.neon.tech) e um projeto dedicado a este diário. Confira as condições e limites do plano oferecido no painel; não é necessário contratar Render.
+2. No projeto, abra **Connect**, selecione o banco e copie a **connection string** PostgreSQL. A conexão com **pooling** pode ser usada. Copie somente a URL que começa com `postgresql://`, sem o comando `psql` e sem aspas externas.
+3. Guarde a URL com segurança. Ela inclui a senha do banco. Não a envie pelo chat nem coloque no GitHub.
+
+O app cria as tabelas automaticamente no primeiro login; não é necessário executar SQL manualmente. Use um banco dedicado e a credencial com permissão de criar tabelas fornecida pelo Neon. A conexão externa verifica o certificado TLS e o nome do servidor. Referências oficiais: [Streamlit com Neon](https://docs.streamlit.io/develop/tutorials/databases/neon) e [conexão Python](https://neon.com/docs/guides/python).
+
+### 2. Enviar o código ao GitHub
+
+Extraia `dist/meu-plano-community-cloud.zip` e envie o conteúdo para a raiz de um repositório, preferencialmente privado. O pacote já contém o código, `requirements.txt`, `requirements.lock` e `.streamlit/config.toml`. Preserve a pasta `.streamlit`. Não envie `.venv`, `.env`, `.streamlit/secrets.toml`, arquivos `.db` ou backups. O arquivo `secrets.toml.example` tem somente campos vazios e pode ser enviado.
+
+### 3. Criar o app no Community Cloud
+
+Em [Streamlit Community Cloud](https://share.streamlit.io), conecte o repositório e escolha:
+
+| Campo | Valor |
+| --- | --- |
+| Repository | Seu repositório no GitHub |
+| Branch | A branch onde você enviou os arquivos, normalmente `main` |
+| Main file path | `streamlit_app.py` |
+| Advanced settings → Python version | **3.13** |
+
+Não use o arquivo local `app.py` como entrada no Community Cloud. Selecione Python 3.13 explicitamente nas opções avançadas; o arquivo `.python-version` não substitui essa seleção.
+
+Em **Advanced settings → Secrets**, cole o conteúdo de [.streamlit/secrets.toml.example](.streamlit/secrets.toml.example) e preencha:
+
+```toml
+APP_PASSWORD = "sua senha pessoal forte de 16 a 256 caracteres"
+DATABASE_URL = "a URL PostgreSQL copiada do Neon"
+OPENAI_API_KEY = ""
+```
+
+As duas primeiras variáveis são obrigatórias. `OPENAI_API_KEY` pode ficar vazia para usar texto, catálogo local e registro manual. Se quiser áudio e análise por IA, preencha sua chave nesse campo. Não copie as frases de exemplo como credenciais.
+
+Clique em **Deploy**. Para atualizar os Secrets posteriormente, use as configurações do app. Se o repositório for privado, autorize o acesso solicitado pelo Streamlit. O login pessoal por senha continua ativo independentemente da visibilidade escolhida na plataforma. Referências: [publicação](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy) e [Secrets](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management).
+
+### 4. Conferir a publicação
+
+Abra a URL `https://SEU-APP.streamlit.app`, faça login, salve um registro de teste e reinicie o app no painel. Entre novamente e confira o registro; depois exclua-o. Verifique também o microfone no celular e baixe um backup completo. Esses passos verificam sua conta e a hospedagem reais, que não são acessadas pelos testes locais.
+
+O código preparado não cria contas, repositórios ou uma URL pública automaticamente. Para instalação anterior com dados locais, use a importação de backup descrita abaixo antes de começar a registrar no Neon.
+
+### Outras hospedagens
+
+`render.yaml` e `compose.yaml` permanecem como alternativas para uso com SQLite e volume persistente. Não são usados pelo Streamlit Community Cloud. No Render, o disco requer serviço pago; a configuração está no arquivo, caso seja útil no futuro.
 
 ## Docker e servidor próprio
 
@@ -51,17 +90,27 @@ Verificação realizada em Chromium e WebKit com telas móveis e toque simulados
 
 ## Backup e recuperação
 
-- A cada abertura/atualização autenticada bem-sucedida, o app atualiza um backup do dia na pasta `backups` ao lado do banco. Backups de dias anteriores são preservados. Isso não é um serviço agendado: dias sem uso não geram uma nova cópia.
+- No Neon, a cada abertura/atualização autenticada bem-sucedida, o app atualiza o snapshot do dia na tabela `daily_backups` do próprio PostgreSQL. No modo local SQLite, ele grava na pasta `backups` ao lado do banco. Snapshots de dias anteriores são preservados. Isso não é um serviço agendado: dias sem uso não geram uma nova cópia.
 - Em **Histórico e exportação → Baixar backup completo**, guarde uma cópia no computador, de preferência semanalmente. Ela contém refeições, checklist, medidas e configurações, inclusive fora dos 60 dias. PDF e CSV são exportações para leitura, não substituem o backup completo.
-- Backups no mesmo disco não protegem contra exclusão/perda desse disco; mantenha também as cópias baixadas.
+- Snapshots no mesmo banco ou disco não protegem contra a exclusão desse banco/disco; mantenha também as cópias baixadas fora da hospedagem.
 
-Para recuperar sem sobrescrever o banco atual:
+O download continua sendo um arquivo SQLite `.db`, inclusive quando o diário usa PostgreSQL. Ele reúne as quatro tabelas do diário em uma cópia consistente; não inclui senha de acesso nem chave da API.
+
+Para recuperar ou migrar esse backup para um **banco Neon vazio**:
+
+```bash
+.venv/bin/python scripts/import_neon.py meu_plano_backup_2026-11-08.db
+```
+
+O comando usa `DATABASE_URL` do ambiente/Secrets locais ou pede a URL em entrada oculta. Ele valida o arquivo e recusa sobrescrever um banco que já tenha registros/configurações pessoais. Depois da importação, configure a mesma URL nos Secrets do Community Cloud. Não digite a URL como argumento do comando, para evitar expor a senha no histórico do terminal.
+
+Para recuperar no modo **local SQLite**, sem sobrescrever o banco atual:
 
 ```bash
 .venv/bin/python scripts/restore.py meu_plano_backup_2026-11-08.db --output dados_recuperados/emagrecimento.db
 ```
 
-O comando valida a integridade e recusa destino existente. Pare o app, defina `APP_DB_PATH` para o caminho restaurado e reinicie. Em produção, o destino precisa ficar dentro do volume persistente. Não copie apenas o arquivo SQLite de um app em execução: use o botão de backup, que inclui alterações já confirmadas no WAL.
+O comando local valida a integridade e recusa destino existente. Pare o app, deixe `DATABASE_URL` vazia, defina `APP_DB_PATH` para o caminho restaurado e reinicie `app.py`. Em produção, o destino precisa ficar dentro do volume persistente. Não copie apenas o arquivo SQLite de um app em execução: use o botão de backup, que inclui alterações já confirmadas no WAL.
 
 ## Áudio e estimativas por IA
 
@@ -97,3 +146,11 @@ Para reproduzir os testes de navegador móvel:
 ```
 
 O teste inicia um servidor local com banco e senha temporários e o encerra ao terminar. Capturas de tela e downloads de teste são gravados em `dist/mobile-qa/`. Os testes de navegador não chamam a API da OpenAI.
+
+Para reproduzir a integração com PostgreSQL real, instale PostgreSQL localmente e execute:
+
+```bash
+.venv/bin/python scripts/check_postgres.py
+```
+
+O comando cria um cluster temporário isolado, verifica o app pela entrada `streamlit_app.py`, gravação/reconexão, transações, exportação e importação de backup, e encerra o cluster ao terminar. Não usa sua conta do Neon. Os testes PostgreSQL são omitidos na execução comum de `pytest` quando esse cluster temporário não está configurado.

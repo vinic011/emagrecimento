@@ -1,4 +1,6 @@
 # Crie .streamlit/secrets.toml com scripts/configure.py para configurar a senha.
 # APP_PASSWORD é obrigatória (16 a 256 caracteres).
 # OPENAI_API_KEY é opcional, necessária apenas para áudio e estimativas por IA.
+# No Community Cloud, publique streamlit_app.py e configure também DATABASE_URL
+# do Neon em Settings -> Secrets. Use .streamlit/secrets.toml.example como modelo.
 # Nunca envie secrets.toml ao repositório nem compartilhe as credenciais.

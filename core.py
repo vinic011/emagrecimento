@@ -9,6 +9,7 @@ from reportlab.lib.units import cm
 from datetime import date, timedelta, datetime
 from pathlib import Path
 import streamlit as st
+from storage import initialize_tables, open_postgres, StorageConfigurationError
 
 
 FOODS = {
@@ -34,19 +35,20 @@ def today():
 def db_path():
  return Path(os.getenv('APP_DB_PATH', 'emagrecimento.db')).expanduser()
 
-def connect():
+def connect(require_remote=False):
+ url=config('DATABASE_URL')
+ if url:return open_postgres(url,today().isoformat())
+ if require_remote:
+  raise StorageConfigurationError('Configure DATABASE_URL do Neon nos Secrets do Streamlit para preservar seu diário.')
  path=db_path()
  path.parent.mkdir(parents=True,exist_ok=True)
  c=sqlite3.connect(path,timeout=30)
  c.execute('PRAGMA journal_mode=WAL')
  c.execute('PRAGMA busy_timeout=30000')
- c.execute('CREATE TABLE IF NOT EXISTS meals (id INTEGER PRIMARY KEY, day TEXT, meal TEXT, food TEXT, grams REAL, kcal REAL, source TEXT, created TEXT)')
- c.execute('CREATE TABLE IF NOT EXISTS habits (day TEXT PRIMARY KEY, water INTEGER DEFAULT 0, sleep INTEGER DEFAULT 0, bike INTEGER DEFAULT 0, bike_minutes INTEGER DEFAULT 0, notes TEXT DEFAULT "")')
- c.execute('CREATE TABLE IF NOT EXISTS measures (day TEXT PRIMARY KEY, weight REAL, waist REAL, hip REAL, notes TEXT DEFAULT "")')
- c.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
+ initialize_tables(c)
  cols=[r[1] for r in c.execute('PRAGMA table_info(habits)')];
  if 'fiber' not in cols:c.execute('ALTER TABLE habits ADD COLUMN fiber INTEGER DEFAULT 0')
- c.execute('INSERT OR IGNORE INTO settings VALUES (?,?)',('start',today().isoformat()))
+ c.execute('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO NOTHING',('start',today().isoformat()))
  c.commit();return c
 
 def get_setting(c,k,default):
@@ -54,7 +56,7 @@ def get_setting(c,k,default):
  return r[0] if r else default
 
 def set_setting(c,k,v):
- c.execute('INSERT OR REPLACE INTO settings VALUES (?,?)',(k,str(v)));c.commit()
+ c.execute('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(k,str(v)));c.commit()
 
 def config(name, default=''):
  if name in os.environ:return os.environ[name]
@@ -122,7 +124,10 @@ def backup_bytes(c):
   finally:dest.close()
   return path.read_bytes()
 
-def daily_backup(c):
+def daily_backup(c, payload=None):
+ if getattr(c,'remote',False):
+  c.save_daily_backup(today().isoformat(),payload if payload is not None else backup_bytes(c))
+  return
  # Keep one complete snapshot per day, updated on each successful page render.
  # These snapshots survive app restarts when APP_DB_PATH is on a persistent disk.
  folder=db_path().parent/'backups'
