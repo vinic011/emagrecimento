@@ -85,10 +85,16 @@ def test_habits_and_measurements_are_date_scoped(app):
     app.checkbox(key='water_2026-11-08').check()
     app.text_area(key='notes_2026-11-08').set_value('Domingo')
     button(app, 'Salvar checklist').click().run()
+    weekly = next(frame.value for frame in app.dataframe if 'Dom 08/11 •' in frame.value.columns)
+    assert weekly.loc[weekly.Item == '💧 Água', 'Dom 08/11 •'].item() == '✓'
+    assert 'Seg 02/11' in weekly.columns
     app.number_input(key='weight_2026-11-08').set_value(96.5)
     button(app, 'Salvar medidas').click().run()
     assert not app.exception
     app.date_input(key='record_day').set_value(date(2026, 11, 9)).run()
+    weekly = next(frame.value for frame in app.dataframe if 'Seg 09/11 •' in frame.value.columns)
+    assert weekly.loc[weekly.Item == '💧 Água', 'Seg 09/11 •'].item() == '—'
+    assert 'Dom 15/11' in weekly.columns
     assert not app.checkbox(key='water_2026-11-09').value
     assert app.text_area(key='notes_2026-11-09').value == ''
     assert app.number_input(key='weight_2026-11-09').value == 98.0

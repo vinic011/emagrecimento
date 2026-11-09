@@ -13,7 +13,7 @@ python3 -m venv .venv
 .venv/bin/streamlit run app.py --server.address=127.0.0.1
 ```
 
-Abra `http://localhost:8501`. O configurador pede uma senha de 16 a 256 caracteres sem mostrá-la e a grava em `.streamlit/secrets.toml`, excluído do Git. O app bloqueia o diário quando a senha não está configurada. Cinco senhas incorretas provocam bloqueio de um minuto, compartilhado entre sessões do mesmo processo. O acesso expira após 12 horas; use **Sair** em aparelhos compartilhados. Não há cadastro nem separação de dados entre usuários: qualquer pessoa com a senha acessa o mesmo diário.
+Abra `http://localhost:8501`. O configurador pede uma senha de 16 a 256 caracteres sem mostrá-la e a grava em `.streamlit/secrets.toml`, excluído do Git. O app bloqueia o diário quando a senha não está configurada. Cinco senhas incorretas provocam bloqueio de um minuto, compartilhado entre sessões do mesmo processo. **Manter conectado por 30 dias** vem marcado e permite atualizar ou reabrir o app no mesmo navegador. Um cookie com token assinado guarda o acesso, sem armazenar a senha; trocar `APP_PASSWORD` invalida os tokens. **Sair** remove o cookie deste navegador. Desmarque a opção em aparelhos compartilhados: nesse caso, o acesso dura até 12 horas na sessão atual. Limpar cookies ou usar navegação privada pode exigir novo login. O cookie usa SameSite=Lax e Secure em HTTPS; por ser gerenciado pelo componente do navegador, não é HttpOnly. Não há cadastro nem separação de dados entre usuários: qualquer pessoa com a senha acessa o mesmo diário.
 
 O banco local existente é preservado. A primeira abertura autenticada fixa a data inicial; você pode alterá-la e clicar em **Salvar configurações**. Datas seguem `America/Recife`.
 

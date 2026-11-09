@@ -1,5 +1,5 @@
 from contextlib import closing
-from datetime import date
+from datetime import date, timedelta
 import sqlite3
 import psycopg
 from storage import read_frame, StorageConfigurationError
@@ -191,6 +191,13 @@ def render_diary(require_remote=False):
        c.execute('DELETE FROM meals WHERE id=?',(int(r.id),));c.commit();st.rerun()
    st.info('Sexta-feira: use peixe e alimentos sem carne de boi, frango ou porco. Jejum de uma refeição é opcional; não é necessário reduzir a meta diária. Sábado: uma refeição livre, que também deve ser registrada.')
   with t2:
+   week_start=day-timedelta(days=day.weekday())
+   week_days=[week_start+timedelta(days=i) for i in range(7)]
+   st.subheader('Checklist da semana')
+   st.caption(f'{week_days[0]:%d/%m/%Y} a {week_days[-1]:%d/%m/%Y} · Selecione uma data no topo para consultar outra semana.')
+   weekly_table=st.empty()
+   st.caption('✓ Concluído / registrado · ○ Não marcado · — Sem registro. No celular, deslize a tabela para ver todos os dias.')
+   st.divider()
    st.subheader(f'Checklist de {day.strftime("%d/%m/%Y")}')
    st.caption('Selecione a data no topo da página para preencher dias anteriores ou futuros.')
    existing=c.execute('SELECT water,sleep,bike,bike_minutes,notes,fiber FROM habits WHERE day=?',(daystr,)).fetchone() or (0,0,0,0,'',0)
@@ -206,6 +213,21 @@ def render_diary(require_remote=False):
    st.caption('Suplemento de fibra: use apenas conforme orientação do rótulo ou profissional, com água suficiente. Separe de medicamentos quando indicado. Não substitui uma alimentação variada.')
    st.caption('Objetivo: bicicleta 60 min em 5 dias da semana. Descanso também faz parte do plano.')
    st.write('**Refeições registradas:** '+', '.join(f'{m}: {"✓" if not meals_df.empty and m in meals_df.meal.values else "○"}' for m in MEALS))
+   # Render after the form so a saved checklist appears in the table immediately.
+   week_params=(week_days[0].isoformat(),week_days[-1].isoformat())
+   week_habits={row[0]:row[1:] for row in c.execute('SELECT day,water,sleep,fiber,bike,bike_minutes FROM habits WHERE day BETWEEN ? AND ?',week_params).fetchall()}
+   week_meals=set(c.execute('SELECT DISTINCT day,meal FROM meals WHERE day BETWEEN ? AND ?',week_params).fetchall())
+   table={'Item':['💧 Água','😴 Sono','🌾 Fibra','🚴 Bicicleta','Bicicleta (min)',*MEALS]}
+   for weekday,week_day in zip(['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'],week_days):
+    record=week_habits.get(week_day.isoformat())
+    values=['✓' if value else '○' for value in record[:4]] if record else ['—']*4
+    values.append(str(record[4] or 0) if record else '—')
+    values.extend('✓' if (week_day.isoformat(),meal_name) in week_meals else '—' for meal_name in MEALS)
+    label=f'{weekday} {week_day:%d/%m}'+(' •' if week_day==day else '')
+    table[label]=values
+   weekly_table.dataframe(pd.DataFrame(table),hide_index=True,width='stretch',height=330,
+    column_config={'Item':st.column_config.TextColumn('Item',width='medium',pinned=True)})
+   st.caption('• Dia selecionado. As refeições são marcadas automaticamente quando você salva alimentos no diário.')
   with t3:
    st.subheader('Peso e medidas — uma vez por semana')
    measure=c.execute('SELECT weight,waist,hip,notes FROM measures WHERE day=?',(daystr,)).fetchone()
